@@ -1,14 +1,13 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Patient, ProtocolType } from './types';
-import { generateObservations } from './utils';
+import { generateObservations, playSound } from './utils';
 import { Sidebar } from './components/Sidebar';
 import { PatientCard } from './components/PatientCard';
-import { Shield, ShieldAlert, LayoutGrid, RefreshCcw, CheckCircle2, AlertCircle, Info, Trash2, Rows } from 'lucide-react';
+import { Shield, ShieldAlert, LayoutGrid, RefreshCcw, CheckCircle2, AlertCircle, Info, Trash2, Moon, Sun } from 'lucide-react';
 
 const STORAGE_KEY = 'obstrack_patients_v1';
-// Removed 'rose', 'orange', 'amber' to reserve them for status alerts (Overdue/Due Soon)
-// Removed 'lime' and 'yellow' as they can be hard to read on white backgrounds
+const THEME_KEY = 'obstrack_theme_pref';
 const THEMES = ['blue', 'emerald', 'violet', 'fuchsia', 'cyan', 'indigo', 'teal', 'sky', 'pink', 'purple', 'slate'];
 
 const generateId = () => {
@@ -39,7 +38,7 @@ const App: React.FC = () => {
           ...o,
           time: new Date(o.time)
         })),
-        theme: p.theme && THEMES.includes(p.theme) ? p.theme : getRandomTheme() // Validate and backfill
+        theme: p.theme && THEMES.includes(p.theme) ? p.theme : getRandomTheme()
       }));
     } catch (e) {
       console.error("Failed to parse stored data", e);
@@ -50,6 +49,30 @@ const App: React.FC = () => {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
   const [now, setNow] = useState(new Date());
+
+  // Dark Mode State
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(THEME_KEY);
+      if (saved) return saved === 'dark';
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return false;
+  });
+
+  // Apply Dark Mode
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem(THEME_KEY, 'dark');
+      // Update meta theme color for mobile browsers
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0f172a');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem(THEME_KEY, 'light');
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#f8fafc');
+    }
+  }, [isDarkMode]);
 
   const addToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -73,6 +96,7 @@ const App: React.FC = () => {
   }, [patients]);
 
   const handleAddPatient = (bedNumber: string, startTimeStr: string, protocol: ProtocolType) => {
+    playSound('success');
     const [hours, minutes] = startTimeStr.split(':').map(Number);
     const startTime = new Date();
     startTime.setHours(hours, minutes, 0, 0);
@@ -91,6 +115,7 @@ const App: React.FC = () => {
   };
 
   const handleToggleObs = (patientId: string, obsId: string) => {
+    playSound('check');
     setPatients(prev => prev.map(p => {
       if (p.id !== patientId) return p;
       const obs = p.observations.find(o => o.id === obsId);
@@ -117,15 +142,8 @@ const App: React.FC = () => {
 
   const handleResetSystem = () => {
     if (window.confirm('CRITICAL ACTION: This will delete all active patient data and refresh the system. This cannot be undone. Proceed?')) {
-      // 1. Explicitly remove storage key
       localStorage.removeItem(STORAGE_KEY);
-      
-      // 2. Set state to empty. This triggers a re-render and ensures the useEffect 
-      //    also sees empty state (double-check protection).
       setPatients([]);
-      
-      // 3. Reload page after a short delay to ensure the browser has committed 
-      //    the storage changes and React has finished its cycle.
       setTimeout(() => {
         window.location.reload();
       }, 200);
@@ -133,11 +151,10 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
       <Sidebar 
         onAddPatient={handleAddPatient} 
-        now={now} 
-        patientCount={patients.length} 
+        now={now}
       />
       
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
@@ -149,7 +166,7 @@ const App: React.FC = () => {
               className={`px-4 py-3 rounded-lg shadow-xl border flex items-center gap-3 animate-in fade-in slide-in-from-right-4 duration-300 pointer-events-auto ${
                 toast.type === 'success' ? 'bg-emerald-600 border-emerald-500 text-white' :
                 toast.type === 'error' ? 'bg-rose-600 border-rose-500 text-white' :
-                'bg-slate-800 border-slate-700 text-white'
+                'bg-slate-800 border-slate-700 text-white dark:bg-slate-700 dark:border-slate-600'
               }`}
             >
               {toast.type === 'success' && <CheckCircle2 size={18} />}
@@ -160,27 +177,37 @@ const App: React.FC = () => {
           ))}
         </div>
 
-        <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between z-10 shrink-0">
+        <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-8 flex items-center justify-between z-10 shrink-0 transition-colors duration-300">
           <div className="flex items-center gap-6">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Post-Op Recovery Board</h1>
-            <div className="hidden md:flex items-center gap-2 text-xs font-semibold text-slate-400 bg-slate-50 px-3 py-1.5 rounded-full">
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Post-Op Recovery Board</h1>
+            <div className="hidden md:flex items-center gap-2 text-xs font-semibold text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-full border border-slate-100 dark:border-slate-700">
               <RefreshCcw size={12} className="animate-spin" style={{ animationDuration: '3s' }} />
               Live Dashboard
             </div>
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all active:scale-95"
+              title="Toggle Theme"
+            >
+              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+
+            <div className="h-6 w-[1px] bg-slate-200 dark:bg-slate-700 mx-1" />
+
             <button 
               onClick={handleResetSystem}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all border transform active:scale-95 ${
                 patients.length === 0 
-                ? 'opacity-30 cursor-not-allowed border-slate-200 text-slate-400' 
-                : 'border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 active:bg-rose-100 cursor-pointer'
+                ? 'opacity-30 cursor-not-allowed border-slate-200 text-slate-400 dark:border-slate-700 dark:text-slate-600' 
+                : 'border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 active:bg-rose-100 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-900/20'
               }`}
               disabled={patients.length === 0}
             >
               <Trash2 size={16} />
-              Reset System
+              <span className="hidden sm:inline">Reset</span>
             </button>
 
             <button 
@@ -190,40 +217,39 @@ const App: React.FC = () => {
               }}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-sm transform active:scale-95 ${
                 isPrivacyMode 
-                ? 'bg-emerald-500 text-white hover:bg-emerald-600' 
-                : 'bg-slate-800 text-white hover:bg-slate-900'
+                ? 'bg-emerald-500 text-white hover:bg-emerald-600 border border-transparent' 
+                : 'bg-slate-800 text-white hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600'
               }`}
             >
               {isPrivacyMode ? <Shield size={18} /> : <ShieldAlert size={18} />}
-              Privacy Mode
+              <span className="hidden sm:inline">Privacy</span>
             </button>
 
-            <div className="h-8 w-[1px] bg-slate-200 mx-1" />
+            <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block" />
             
             <div className="text-right hidden sm:block">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">
                 {now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
               </p>
-              <p className="text-lg font-bold text-blue-600 tabular-nums leading-none">
+              <p className="text-lg font-bold text-blue-600 dark:text-blue-400 tabular-nums leading-none">
                 {now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6 bg-slate-100/50">
+        <div className="flex-1 overflow-y-auto p-6 bg-slate-100/50 dark:bg-black/20">
           {patients.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto">
-              <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center mb-6">
-                <LayoutGrid size={40} className="text-slate-400" />
+              <div className="w-20 h-20 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6">
+                <LayoutGrid size={40} className="text-slate-400 dark:text-slate-600" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-800 mb-2">Ward Board Empty</h2>
-              <p className="text-slate-500 leading-relaxed">
+              <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-2">Ward Board Empty</h2>
+              <p className="text-slate-500 dark:text-slate-400 leading-relaxed">
                 Enter a Bay and Bed number in the sidebar to begin automated observation tracking for new admissions.
               </p>
             </div>
           ) : (
-            // Changed from grid to flex-col stack
             <div className="flex flex-col gap-4 max-w-5xl mx-auto w-full">
               {patients.map(patient => (
                 <PatientCard
@@ -239,7 +265,7 @@ const App: React.FC = () => {
           )}
         </div>
 
-        <footer className="h-12 bg-white border-t border-slate-200 px-8 flex items-center justify-center gap-8 md:gap-12 text-[10px] font-bold text-slate-400 shrink-0">
+        <footer className="h-12 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-8 flex items-center justify-center gap-8 md:gap-12 text-[10px] font-bold text-slate-400 dark:text-slate-500 shrink-0 transition-colors duration-300">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-emerald-500" />
             <span className="uppercase tracking-wider">COMPLETED</span>
@@ -253,7 +279,7 @@ const App: React.FC = () => {
             <span className="uppercase tracking-wider">DUE SOON</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-slate-200" />
+            <div className="w-3 h-3 rounded-full bg-slate-200 dark:bg-slate-700" />
             <span className="uppercase tracking-wider">SCHEDULED</span>
           </div>
         </footer>
